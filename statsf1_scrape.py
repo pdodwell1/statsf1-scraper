@@ -24,31 +24,34 @@ PAGES = [
 
 def get_race_slugs_for_year(year: int) -> list[str]:
     """
-    Robust Option A:
-    Use a known working race page as an anchor, then extract all /en/<year>/<slug>/ links
-    from that page's navigation and content.
+    Discover race slugs by parsing href attributes and accepting only clean slugs.
+    Handles both:
+      /en/2025/abou-dhabi/...
+      /en/2025/abou-dhabi.aspx
     """
     anchor = f"{BASE}/en/{year}/abou-dhabi/classement.aspx"
-
     resp = requests.get(anchor, headers=HEADERS, timeout=20)
     resp.raise_for_status()
-    html = resp.text
+
+    soup = BeautifulSoup(resp.text, "html.parser")
 
     slugs = set()
-    for m in re.finditer(rf"/en/{year}/([^/]+)/", html):
-        slugs.add(m.group(1))
+    for a in soup.select("a[href]"):
+        href = a["href"].strip()
+
+        m = re.match(rf"^/en/{year}/([a-z0-9\-]+)(?:/|\.aspx)", href)
+        if m:
+            slugs.add(m.group(1))
 
     return sorted(slugs)
-
+    
 def pick_latest_race_slug(slugs: list[str]) -> str:
-    """
-    Pick the latest race by checking which slug has a valid classement.aspx page
-    and using Last-Modified header when present.
-    """
     best = None
     best_dt = None
 
     for slug in slugs:
+        if not re.fullmatch(r"[a-z0-9\-]+", slug):
+            continue
         url = f"{BASE}/en/{YEAR}/{slug}/classement.aspx"
         try:
             r = requests.head(url, headers=HEADERS, timeout=15, allow_redirects=True)
