@@ -75,7 +75,15 @@ def pick_latest_race_slug(slugs: list[str]) -> str:
     return best
 
 def scrape_tables(url: str) -> list[pd.DataFrame]:
-    dfs = pd.read_html(url)
+    resp = requests.get(url, headers=HEADERS, timeout=30)
+
+    # If a page doesn't exist for that race, don't crash the entire run
+    if resp.status_code == 404:
+        return []
+
+    resp.raise_for_status()
+
+    dfs = pd.read_html(resp.text)
     out = []
     for df in dfs:
         df.columns = [str(c).strip() for c in df.columns]
@@ -106,9 +114,12 @@ def main():
 
         for page in PAGES:
             url = f"{BASE}/en/{YEAR}/{latest_slug}/{page}"
-            dfs = scrape_tables(url)
+           dfs = scrape_tables(url)
+    if not dfs:
+    print(f"Skipped (no tables or 404): {url}")
+    continue
 
-            for i, df in enumerate(dfs, start=1):
+for i, df in enumerate(dfs, start=1):
                 sheet = safe_sheet_name(f"{latest_slug}_{page.replace('.aspx','')}_{i}")
                 df.to_excel(writer, sheet_name=sheet, index=False)
 
