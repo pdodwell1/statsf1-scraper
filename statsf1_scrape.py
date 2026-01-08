@@ -9,6 +9,8 @@ from bs4 import BeautifulSoup
 BASE = "https://www.statsf1.com"
 YEAR = 2025
 
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+
 PAGES = [
     "engages.aspx",
     "qualification.aspx",
@@ -22,26 +24,19 @@ PAGES = [
 
 def get_race_slugs_for_year(year: int) -> list[str]:
     """
-    Option A: Discover race slugs by scanning the season page for links like /en/<year>/<slug>/...
+    Robust Option A:
+    Use a known working race page as an anchor, then extract all /en/<year>/<slug>/ links
+    from that page's navigation and content.
     """
-    candidate_urls = [
-        f"{BASE}/en/{year}.aspx",
-        f"{BASE}/en/{year}/default.aspx",
-    ]
+    anchor = f"{BASE}/en/{year}/abou-dhabi/classement.aspx"
+
+    resp = requests.get(anchor, headers=HEADERS, timeout=20)
+    resp.raise_for_status()
+    html = resp.text
 
     slugs = set()
-    for url in candidate_urls:
-        try:
-            html = requests.get(url, timeout=20).text
-        except Exception:
-            continue
-
-        soup = BeautifulSoup(html, "html.parser")
-        for a in soup.select("a[href]"):
-            href = a["href"]
-            m = re.search(rf"^/en/{year}/([^/]+)/", href)
-            if m:
-                slugs.add(m.group(1))
+    for m in re.finditer(rf"/en/{year}/([^/]+)/", html):
+        slugs.add(m.group(1))
 
     return sorted(slugs)
 
@@ -56,7 +51,7 @@ def pick_latest_race_slug(slugs: list[str]) -> str:
     for slug in slugs:
         url = f"{BASE}/en/{YEAR}/{slug}/classement.aspx"
         try:
-            r = requests.head(url, timeout=15, allow_redirects=True)
+            r = requests.head(url, headers=HEADERS, timeout=15, allow_redirects=True)
             if r.status_code >= 400:
                 continue
 
